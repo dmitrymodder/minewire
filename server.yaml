@@ -1,0 +1,49 @@
+# Minewire Server Configuration
+# This file contains all settings for the Minewire proxy server
+
+# Port to listen on for incoming connections
+# Default: 25565 (standard Minecraft port)
+listen_port: "25565"
+
+# List of authorized passwords for client authentication
+# Generate secure passwords using: openssl rand -hex 16
+# Each password will be hashed by the client to generate a username
+# Example passwords below - REPLACE THESE WITH YOUR OWN!
+passwords:
+  - "EXAMPLE1_REPLACE_ME_0123456789abcdef"
+  - "EXAMPLE2_REPLACE_ME_fedcba9876543210"
+  - "EXAMPLE3_REPLACE_ME_1a2b3c4d5e6f7890"
+
+# Minecraft server metadata (for masquerading as a real Minecraft server)
+# This information is shown when clients query the server status
+
+# Minecraft version name displayed to clients
+# Example: "1.21.10", "1.20.4", etc.
+version_name: "1.21.10"
+
+# Minecraft protocol version ID
+# Must match the version_name (773 = 1.21.10)
+# See https://wiki.vg/Protocol_version_numbers for version IDs
+protocol_id: 773
+
+# Path to server icon image (64x64 PNG)
+# This icon is displayed in the Minecraft server list
+icon_path: "server-icon.png"
+
+# Message of the Day (MOTD) shown in server list
+# Supports Minecraft color codes (§a = green, §b = cyan, §e = yellow, etc.)
+# Use \n for line breaks
+motd: "§bMinewire Proxy Server\\n§eSecure Tunnel Active"
+
+# Player count settings
+# These settings control the simulated player count shown in server status
+
+# Maximum players displayed in server list
+max_players: 20
+
+# Minimum simulated online players
+online_min: 4
+
+# Maximum simulated online players
+# The server will show a random count between online_min and online_max
+online_max: 20

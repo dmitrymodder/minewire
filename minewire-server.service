@@ -1,0 +1,32 @@
+[Unit]
+Description=Minewire Proxy Server
+Documentation=https://github.com/yourusername/minewire-protocol
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=minewire
+Group=minewire
+WorkingDirectory=/etc/minewire
+ExecStart=/usr/local/bin/minewire-server
+Restart=on-failure
+RestartSec=10s
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/etc/minewire
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=minewire-server
+
+[Install]
+WantedBy=multi-user.target
