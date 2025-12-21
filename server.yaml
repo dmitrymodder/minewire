@@ -9,10 +9,18 @@ listen_port: "25565"
 # Generate secure passwords using: openssl rand -hex 16
 # Each password will be hashed by the client to generate a username
 # Example passwords below - REPLACE THESE WITH YOUR OWN!
+# You can now specify an optional nickname for each password using a map format:
+# - "PASSWORD": "Nickname"
+# This allows you to identify users in logs and use the subscription system.
 passwords:
-  - "EXAMPLE1_REPLACE_ME_0123456789abcdef"
-  - "EXAMPLE2_REPLACE_ME_fedcba9876543210"
-  - "EXAMPLE3_REPLACE_ME_1a2b3c4d5e6f7890"
+  - "EXAMPLE1_REPLACE_ME_0123456789abcdef": "User1" 
+  - "EXAMPLE2_REPLACE_ME_fedcba9876543210": "Phone"
+  - "EXAMPLE3_REPLACE_ME_1a2b3c4d5e6f7890" # No nickname
+
+# Optional: Port to serve subscriptions on
+# Access: http://server_ip:subs_listen_port/subs/Nickname
+# The server will return a mw:// link automatically configured for this server.
+#subs_listen_port: "25564"
 
 # Minecraft server metadata (for masquerading as a real Minecraft server)
 # This information is shown when clients query the server status

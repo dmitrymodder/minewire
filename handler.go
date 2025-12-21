@@ -42,17 +42,36 @@ var (
 	currentOnline int
 	onlineLock    sync.Mutex
 	validUsers    = make(map[string]string) // Map: GeneratedUsername -> OriginalPassword
+	nicknameMap   = make(map[string]string) // Map: Nickname -> OriginalPassword
 )
 
 // initAuthMap initializes the authentication map by generating expected usernames
 // from configured passwords. Clients generate usernames using the same algorithm.
 func initAuthMap() {
-	for _, pwd := range cfg.Passwords {
+	hashAndRegister := func(pwd, nick string) {
 		h := sha256.Sum256([]byte(pwd))
 		// Generate expected username the same way the client does
 		expectedUser := "Player" + hex.EncodeToString(h[:])[:8]
 		validUsers[expectedUser] = pwd
-		log.Printf("Registered agent access for: %s", expectedUser)
+		if nick != "" {
+			nicknameMap[nick] = pwd
+			log.Printf("Registered agent access for: %s (Nick: %s)", expectedUser, nick)
+		} else {
+			log.Printf("Registered agent access for: %s", expectedUser)
+		}
+	}
+
+	for _, item := range cfg.Passwords {
+		switch v := item.(type) {
+		case string:
+			hashAndRegister(v, "")
+		case map[string]interface{}:
+			for pwd, nickVal := range v {
+				if nick, ok := nickVal.(string); ok {
+					hashAndRegister(pwd, nick)
+				}
+			}
+		}
 	}
 }
 
