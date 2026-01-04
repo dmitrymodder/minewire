@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net"
 	"os"
 	"sync"
@@ -33,6 +34,8 @@ const (
 	PID_CB_JoinGame        = 0x29 // Server -> Client: Join game
 	PID_CB_KeepAlive       = 0x24 // Server -> Client: Keep alive
 	PID_CB_ChunkData       = 0x25 // Server -> Client: Chunk data
+	PID_CB_PlayerPos       = 0x3E // Server -> Client: Synchronize Player Position
+	PID_CB_TimeUpdate      = 0x62 // Server -> Client: Time Update
 
 	PID_SB_PluginMsg = 0x0D // Client -> Server: Plugin message
 )
@@ -194,20 +197,33 @@ func startDeepCoverSession(conn net.Conn, username string, leftoverReader io.Rea
 	WriteBool(buf, false)
 	WritePacket(conn, PID_CB_JoinGame, buf.Bytes())
 
-	// Step 3: Start encrypted multiplexed tunnel (using password for encryption)
-	startMuxTunnel(conn, leftoverReader, password)
+	// Step 3: Send Synchronize Player Position (Protocol 773 / 1.20.4-1.21.x mix)
+	// Sets the initial player position to a realistic value
+	motion := NewMotionGenerator()
+	buf.Reset()
+	WriteDouble(buf, motion.X)
+	WriteDouble(buf, motion.Y)
+	WriteDouble(buf, motion.Z)
+	WriteFloat(buf, float32(motion.Angle*180/math.Pi)) // Yaw
+	WriteFloat(buf, 0)                                 // Pitch
+	WriteByte(buf, 0x00)                               // Flags (absolute)
+	WriteVarInt(buf, 0)                                // Teleport ID
+	WritePacket(conn, PID_CB_PlayerPos, buf.Bytes())
+
+	// Step 4: Start encrypted multiplexed tunnel (using password for encryption)
+	startMuxTunnel(conn, leftoverReader, password, motion)
 }
 
 // startMuxTunnel creates an encrypted yamux session over the Minecraft connection.
 // Traffic is encrypted with AES-GCM and disguised as Minecraft chunk data packets.
-func startMuxTunnel(conn net.Conn, leftoverReader io.Reader, password string) {
+func startMuxTunnel(conn net.Conn, leftoverReader io.Reader, password string, motion *MotionGenerator) {
 	// Use the user's password to derive AES encryption key
 	key := sha256.Sum256([]byte(password))
 	block, _ := aes.NewCipher(key[:])
 	aead, _ := cipher.NewGCM(block)
 	pr, pw := io.Pipe()
 
-	mc := &MinecraftConn{conn: conn, r: pr, w: pw, aead: aead, rawReader: leftoverReader}
+	mc := &MinecraftConn{conn: conn, r: pr, w: pw, aead: aead, rawReader: leftoverReader, motion: motion}
 
 	go func() {
 		defer pw.Close()
@@ -250,11 +266,29 @@ func startMuxTunnel(conn net.Conn, leftoverReader io.Reader, password string) {
 
 	go func() {
 		ticker := time.NewTicker(10 * time.Second)
+		timeTicker := time.NewTicker(20 * time.Second) // Minecraft time flows...
 		defer ticker.Stop()
-		for range ticker.C {
-			buf := new(bytes.Buffer)
-			WriteLong(buf, time.Now().UnixNano())
-			WritePacket(conn, PID_CB_KeepAlive, buf.Bytes())
+		defer timeTicker.Stop()
+
+		worldTime := int64(0)
+
+		for {
+			select {
+			case <-ticker.C:
+				buf := new(bytes.Buffer)
+				WriteLong(buf, time.Now().UnixNano())
+				WritePacket(conn, PID_CB_KeepAlive, buf.Bytes())
+			case <-timeTicker.C:
+				// Send Time Update to encourage client simulation
+				worldTime += 20 * 20 // Advance 20 seconds (20 ticks/sec)
+				buf := new(bytes.Buffer)
+				WriteLong(buf, worldTime)        // World Age
+				WriteLong(buf, -worldTime%24000) // Time of day (negative to stop internal cycle if client respected it, but here just updating)
+				WritePacket(conn, PID_CB_TimeUpdate, buf.Bytes())
+
+				// Update motion simulation rarely to be efficient
+				mc.motion.Update()
+			}
 		}
 	}()
 
@@ -302,6 +336,7 @@ type MinecraftConn struct {
 	w         *io.PipeWriter
 	aead      cipher.AEAD
 	rawReader io.Reader
+	motion    *MotionGenerator
 }
 
 func (mc *MinecraftConn) Read(b []byte) (int, error) { return mc.r.Read(b) }
@@ -313,8 +348,14 @@ func (mc *MinecraftConn) Write(b []byte) (int, error) {
 	encrypted := mc.aead.Seal(nonce, nonce, b, nil)
 
 	buf := new(bytes.Buffer)
-	WriteInt(buf, 0) // Chunk X
-	WriteInt(buf, 0) // Chunk Z
+
+	// Use simulated coordinates for Chunk X/Z based on current player position
+	// This makes the "chunks" appear around the player
+	chunkX := int(mc.motion.X) >> 4
+	chunkZ := int(mc.motion.Z) >> 4
+
+	WriteInt(buf, int32(chunkX)) // Chunk X
+	WriteInt(buf, int32(chunkZ)) // Chunk Z
 
 	// Add realistic NBT heightmap data to disguise the packet
 	// TAG_Compound (Start)

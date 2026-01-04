@@ -38,7 +38,7 @@ type Config struct {
 
 var cfg Config
 
-const ServerVersion = "25.12.4"
+const ServerVersion = "26.1.1"
 
 func main() {
 	// Handle Version Flags
