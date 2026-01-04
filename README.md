@@ -1,56 +1,70 @@
 # Minewire Server
 
-Прокси-сервер Minewire, маскирующийся под сервер Minecraft для обхода ограничений и создания защищенных туннелей.
+Proxy server that masquerades as a Minecraft server to establish encrypted tunnels and bypass network restrictions.
 
-## Возможности
+## Features
 
-- **Шифрование AES-GCM** - весь трафик шифруется с использованием пароля клиента
-- **Маскировка под Minecraft** - сервер выглядит как обычный Minecraft сервер при сканировании
-- **Мультиплексирование** - множественные соединения через один туннель (yamux)
-- **Симуляция игроков** - реалистичная имитация количества игроков онлайн
-- **Аутентификация по паролю** - поддержка нескольких пользователей с разными паролями
+- **AES-GCM Encryption** - All traffic encrypted using client password
+- **Minecraft Camouflage** - Appears as legitimate Minecraft server when scanned
+- **Stream Multiplexing** - Multiple connections through single tunnel (yamux)
+- **Player Simulation** - Realistic online player count fluctuation
+- **Password Authentication** - Multi-user support with individual passwords
 
-## Требования
+## How It Works
 
-- Linux сервер (Ubuntu, Debian и т.д.)
-- Go 1.19 или новее (для компиляции)
-- Права root (для установки)
-- Открытый порт (по умолчанию 25565)
+The protocol leverages Minecraft's packet structure for stealth operation:
 
-## Установка
+1. **Initial Handshake**: Client connects and performs standard Minecraft handshake/status/login sequence
+2. **Authentication**: Username is derived from SHA256(password), validated against server's authorized users map
+3. **Protocol Simulation**: Server sends Join Game, Player Position, Keep-Alive, and Time Update packets to maintain appearance
+4. **Tunnel Establishment**: After authentication, yamux multiplexed session is initiated over the connection
+5. **Traffic Encapsulation**: Data is encrypted with AES-GCM and embedded inside Minecraft Chunk Data packets (0x25)
+   - Each chunk uses realistic coordinates based on simulated player position
+   - Includes authentic NBT heightmap data (MOTION_BLOCKING tag with packed height values)
+   - Encrypted payload follows the heightmap structure
+6. **Stream Proxying**: Each yamux stream reads target address and proxies TCP connection bidirectionally
 
-### Быстрая установка
+The key insight: Minecraft chunk packets can be arbitrarily large and frequent, making them perfect carriers for encrypted tunnel traffic while maintaining protocol compliance.
+
+## Requirements
+
+- Linux server (Ubuntu, Debian, etc.)
+- Go 1.19+ (for compilation)
+- Root access (for installation)
+- Open port (default 25565)
+
+## Installation
+
+### Quick Install
 
 ```bash
 cd server
 sudo bash setup.sh
 ```
 
-Скрипт установки автоматически:
-1. Проверит наличие Go компилятора
-2. Скомпилирует сервер
-3. Создаст системного пользователя `minewire`
-4. Установит бинарный файл в `/usr/local/bin/minewire-server`
-5. Создаст конфигурацию в `/etc/minewire/server.yaml`
-6. Установит systemd сервис
-7. Перезагрузит systemd
+The script automatically:
+1. Checks for Go compiler
+2. Compiles the server
+3. Creates system user `minewire`
+4. Installs binary to `/usr/local/bin/minewire-server`
+5. Creates config at `/etc/minewire/server.yaml`
+6. Installs systemd service
+7. Reloads systemd
 
-### Ручная установка
-
-Если вы предпочитаете установку вручную:
+### Manual Install
 
 ```bash
-# Компиляция
+# Compile
 cd minewire
 go build -o minewire-server
 
-# Создание пользователя
+# Create user
 sudo useradd --system --no-create-home --shell /bin/false minewire
 
-# Установка бинарного файла
+# Install binary
 sudo install -m 755 minewire-server /usr/local/bin/minewire-server
 
-# Создание конфигурации
+# Setup config
 sudo mkdir -p /etc/minewire
 sudo cp server.yaml /etc/minewire/server.yaml
 sudo cp server-icon.png /etc/minewire/server-icon.png
@@ -58,165 +72,132 @@ sudo chown -R minewire:minewire /etc/minewire
 sudo chmod 750 /etc/minewire
 sudo chmod 640 /etc/minewire/server.yaml
 
-# Установка сервиса
+# Install service
 sudo cp minewire-server.service /etc/systemd/system/
 sudo systemctl daemon-reload
 ```
 
-## Настройка
+## Configuration
 
-### 1. Редактирование конфигурации
-
-```bash
-sudo nano /etc/minewire/server.yaml
-```
-
-### 2. Генерация безопасных паролей
-
-Используйте OpenSSL для генерации случайных паролей:
+### Generate Secure Passwords
 
 ```bash
 openssl rand -hex 16
 ```
 
-Пример вывода: `3d7e8a190604e9da51a3543a23421d20`
+Example output: `3d7e8a190604e9da51a3543a23421d20`
 
-### 3. Основные параметры конфигурации
+### Configuration File
+
+Edit `/etc/minewire/server.yaml`:
 
 ```yaml
-# Порт для прослушивания (стандартный порт Minecraft)
 listen_port: "25565"
 
-# Список разрешенных паролей (замените примеры на свои!)
 passwords:
-  - "ВАШ_ПАРОЛЬ_1_ЗДЕСЬ"
-  - "ВАШ_ПАРОЛЬ_2_ЗДЕСЬ"
+  - "YOUR_PASSWORD_1"
+  - "YOUR_PASSWORD_2"
 
-# Метаданные Minecraft сервера (для маскировки)
+# Minecraft metadata (for camouflage)
 version_name: "1.21.10"
 protocol_id: 773
 icon_path: "server-icon.png"
 motd: "§bMinewire Proxy Server\\n§eSecure Tunnel Active"
 
-# Настройки симуляции игроков
+# Player simulation
 max_players: 20
 online_min: 4
 online_max: 20
 ```
 
-### 4. Настройка иконки (опционально)
+### Custom Icon (Optional)
 
-Замените `server-icon.png` на свою иконку (64x64 пикселя, PNG формат):
+Replace with your 64x64 PNG:
 
 ```bash
 sudo cp your-icon.png /etc/minewire/server-icon.png
 sudo chown minewire:minewire /etc/minewire/server-icon.png
 ```
 
-## Управление сервисом
-
-### Запуск сервера
+## Service Management
 
 ```bash
+# Start
 sudo systemctl start minewire-server
-```
 
-### Остановка сервера
-
-```bash
+# Stop
 sudo systemctl stop minewire-server
-```
 
-### Перезапуск сервера
-
-```bash
+# Restart
 sudo systemctl restart minewire-server
-```
 
-### Проверка статуса
-
-```bash
+# Status
 sudo systemctl status minewire-server
-```
 
-### Просмотр логов
-
-```bash
-# Просмотр последних логов
+# View logs
 sudo journalctl -u minewire-server -n 50
 
-# Просмотр логов в реальном времени
+# Follow logs
 sudo journalctl -u minewire-server -f
-```
 
-### Автозапуск при загрузке системы
-
-```bash
-# Включить автозапуск
+# Enable auto-start
 sudo systemctl enable minewire-server
-
-# Отключить автозапуск
-sudo systemctl disable minewire-server
 ```
 
-### Настройка файрвола (UFW)
+## Firewall Setup
+
+### UFW
 
 ```bash
-# Разрешить порт Minewire
 sudo ufw allow 25565/tcp
-
-# Включить файрвол
 sudo ufw enable
 ```
 
-### Настройка файрвола (firewalld)
+### firewalld
 
 ```bash
-# Разрешить порт Minewire
 sudo firewall-cmd --permanent --add-port=25565/tcp
 sudo firewall-cmd --reload
 ```
 
-## Удаление
-
-Для полного удаления сервера:
+## Uninstall
 
 ```bash
-# Остановить и отключить сервис
 sudo systemctl stop minewire-server
 sudo systemctl disable minewire-server
-
-# Удалить файлы
 sudo rm /usr/local/bin/minewire-server
 sudo rm /etc/systemd/system/minewire-server.service
 sudo rm -rf /etc/minewire
-
-# Удалить пользователя
 sudo userdel minewire
-
-# Перезагрузить systemd
 sudo systemctl daemon-reload
 ```
 
-## Архитектура
+## Architecture
 
-### Как это работает
+### Components
 
-1. **Маскировка**: Сервер отвечает на запросы статуса Minecraft, показывая реалистичную информацию
-2. **Аутентификация**: Клиент генерирует имя пользователя из хеша пароля
-3. **Туннелирование**: После аутентификации устанавливается зашифрованный yamux туннель
-4. **Шифрование**: Весь трафик шифруется AES-GCM и маскируется под пакеты чанков Minecraft
-5. **Проксирование**: Каждый yamux стрим проксирует соединение к целевому адресу
+- `main.go` - Entry point, connection handling
+- `handler.go` - Protocol logic, encryption, tunneling
+- `protocol.go` - Minecraft protocol primitives (VarInt, String, etc.)
+- `motion.go` - Player movement simulation for realistic chunk coordinates
+- `server.yaml` - Server configuration
+- `minewire-server.service` - systemd service unit
+- `setup.sh` - Installation script
 
-### Компоненты
+### Protocol Details
 
-- `main.go` - точка входа, обработка соединений
-- `handler.go` - логика протокола, шифрование, туннелирование
-- `protocol.go` - примитивы протокола Minecraft (VarInt, String и т.д.)
-- `server.yaml` - конфигурация сервера
-- `minewire-server.service` - systemd сервис
-- `setup.sh` - скрипт установки
+**Authentication**: Client hashes password with SHA256, takes first 8 hex chars, prefixes with "Player" to generate username. Server validates against pre-computed map.
 
-## Лицензия
+**Encryption**: Per-user AES-GCM key derived from SHA256(password). Each write generates random nonce, encrypts data, prepends nonce to ciphertext.
+
+**Packet Structure**: Chunk Data (0x25) format:
+- Chunk X/Z coordinates (based on simulated player position)
+- NBT heightmap compound tag with MOTION_BLOCKING long array (37 longs, 9-bit packed heights)
+- VarInt length + encrypted payload
+- Empty block entities and light mask arrays
+
+**Motion Simulation**: Random walk algorithm with terrain-following Y-coordinate adjustment. Updates periodically to generate varied chunk coordinates, enhancing camouflage.
+
+## License
 
 MIT
