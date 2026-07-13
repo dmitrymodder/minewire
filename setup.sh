@@ -25,15 +25,18 @@ check_root() {
     fi
 }
 
-check_deps() {
-    echo "[Checking dependencies...]"
-    if ! command -v go &> /dev/null; then
-        echo "Error: Go compiler not found!"
-        echo "Please install Go from https://golang.org/dl/"
-        exit 1
-    fi
-    echo "✓ Go compiler found: $(go version)"
-    echo ""
+detect_arch() {
+    ARCH=$(uname -m)
+    case "$ARCH" in
+        x86_64|amd64)  ARCH="amd64" ;;
+        aarch64|arm64) ARCH="arm64" ;;
+        *)
+            echo "Error: Unsupported architecture: $ARCH"
+            echo "Only amd64 and arm64 are supported."
+            exit 1
+            ;;
+    esac
+    echo "Detected architecture: $ARCH"
 }
 
 detect_installed_version() {
@@ -50,14 +53,61 @@ detect_installed_version() {
     return 1 # Not found
 }
 
-compile_server() {
-    echo "[Compiling Minewire server...]"
-    go build -o $BINARY_NAME -ldflags="-s -w" .
-    if [ ! -f "$BINARY_NAME" ]; then
-        echo "Error: Compilation failed!"
+download_binary() {
+    echo "[Downloading latest Minewire server from GitHub Releases...]"
+    
+    # Detect architecture
+    detect_arch
+    
+    # Get latest release download URL
+    LATEST_URL="https://github.com/dmitrymodder/minewire/releases/latest/download/minewire-server-linux-${ARCH}"
+    CHECKSUM_URL="https://github.com/dmitrymodder/minewire/releases/latest/download/checksums.txt"
+    
+    echo "Downloading: $LATEST_URL"
+    
+    # Download binary
+    if command -v curl &> /dev/null; then
+        curl -fsSL -o "$BINARY_NAME" "$LATEST_URL" || {
+            echo "Error: Failed to download binary from GitHub Releases."
+            echo "Please check your internet connection or try again later."
+            exit 1
+        }
+        
+        # Download checksums
+        curl -fsSL -o /tmp/minewire_checksums.txt "$CHECKSUM_URL" 2>/dev/null
+    elif command -v wget &> /dev/null; then
+        wget -q -O "$BINARY_NAME" "$LATEST_URL" || {
+            echo "Error: Failed to download binary from GitHub Releases."
+            echo "Please check your internet connection or try again later."
+            exit 1
+        }
+        
+        # Download checksums
+        wget -q -O /tmp/minewire_checksums.txt "$CHECKSUM_URL" 2>/dev/null
+    else
+        echo "Error: Neither curl nor wget found. Please install one of them."
         exit 1
     fi
-    echo "✓ Server compiled successfully"
+    
+    # Verify checksum if checksums file was downloaded
+    if [ -f /tmp/minewire_checksums.txt ]; then
+        EXPECTED=$(grep "minewire-server-linux-${ARCH}" /tmp/minewire_checksums.txt | awk '{print $1}')
+        if [ -n "$EXPECTED" ]; then
+            ACTUAL=$(sha256sum "$BINARY_NAME" | awk '{print $1}')
+            if [ "$EXPECTED" != "$ACTUAL" ]; then
+                echo "Error: Checksum verification failed!"
+                echo "Expected: $EXPECTED"
+                echo "Got:      $ACTUAL"
+                rm -f "$BINARY_NAME" /tmp/minewire_checksums.txt
+                exit 1
+            fi
+            echo "✓ Checksum verified"
+        fi
+        rm -f /tmp/minewire_checksums.txt
+    fi
+    
+    chmod +x "$BINARY_NAME"
+    echo "✓ Binary downloaded successfully (${ARCH})"
     echo ""
 }
 
@@ -135,7 +185,6 @@ install_files() {
 main() {
     print_header
     check_root
-    check_deps
 
     MODE="INSTALL"
 
@@ -154,7 +203,7 @@ main() {
     echo "Starting $MODE process..."
     echo ""
 
-    compile_server
+    download_binary
     
     if [ "$MODE" == "UPDATE" ]; then
         stop_server

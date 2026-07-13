@@ -29,7 +29,6 @@ The key insight: Minecraft chunk packets can be arbitrarily large and frequent, 
 ## Requirements
 
 - Linux server (Ubuntu, Debian, etc.)
-- Go 1.19+ (for compilation)
 - Root access (for installation)
 - Open port (default 25565)
 
@@ -38,31 +37,41 @@ The key insight: Minecraft chunk packets can be arbitrarily large and frequent, 
 ### Quick Install
 
 ```bash
-cd server
+git clone https://github.com/dmitrymodder/minewire.git
+cd minewire
 sudo bash setup.sh
 ```
 
 The script automatically:
-1. Checks for Go compiler
-2. Compiles the server
-3. Creates system user `minewire`
-4. Installs binary to `/usr/local/bin/minewire-server`
-5. Creates config at `/etc/minewire/server.yaml`
-6. Installs systemd service
-7. Reloads systemd
+1. Detects system architecture (amd64/arm64)
+2. Downloads the latest pre-compiled binary from GitHub Releases
+3. Verifies SHA256 checksum
+4. Creates system user `minewire`
+5. Installs binary to `/usr/local/bin/minewire-server`
+6. Creates config at `/etc/minewire/server.yaml`
+7. Installs systemd service
+8. Reloads systemd
+
+### One-Line Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dmitrymodder/minewire/main/setup.sh | sudo bash
+```
+
+> **Note**: One-line install requires the repository to be cloned for config and service files. Use the Quick Install method above for first-time setup.
 
 ### Manual Install
 
+Download the latest binary from [GitHub Releases](https://github.com/dmitrymodder/minewire/releases/latest):
+
 ```bash
-# Compile
-cd minewire
-go build -o minewire-server
+# Download binary (replace amd64 with arm64 if needed)
+sudo curl -fsSL -o /usr/local/bin/minewire-server \
+  https://github.com/dmitrymodder/minewire/releases/latest/download/minewire-server-linux-amd64
+sudo chmod +x /usr/local/bin/minewire-server
 
 # Create user
 sudo useradd --system --no-create-home --shell /bin/false minewire
-
-# Install binary
-sudo install -m 755 minewire-server /usr/local/bin/minewire-server
 
 # Setup config
 sudo mkdir -p /etc/minewire
