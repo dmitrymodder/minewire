@@ -1,5 +1,13 @@
 # Minewire Server
 
+> [!WARNING]
+> ### Not hardened against traffic-analysis / behavioral DPI — read before use
+>
+> - This project was built as a **"what if?" hobby experiment**, not against a rigorous threat model. It has **not** been tested or designed to resist **traffic-volume or behavioral analysis** (e.g. GFW-style DPI that inspects statistical traffic patterns rather than packet signatures).
+> - It was developed and validated against a **signature-based DPI** environment (specifically, Russian DPI/ТСПУ), which inspects content/signatures more than aggregate traffic volume. Results in other censorship environments may differ significantly.
+> - Throughput is **intentionally higher than a real Minecraft client's**, in order to make the tunnel practically usable. This makes the disguise **statistically distinguishable** from genuine Minecraft traffic under sustained volume-based observation.
+> - **Do not rely on this as your only or primary circumvention layer** in a high-risk environment. Use at your own risk, and understand the threat model above before deploying it anywhere your safety depends on it.
+
 Proxy server that masquerades as a Minecraft server to establish encrypted tunnels and bypass network restrictions.
 
 ## Features
