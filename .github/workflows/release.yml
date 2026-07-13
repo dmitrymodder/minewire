@@ -1,0 +1,76 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26'
+
+      - name: Build binary
+        run: |
+          GOOS=linux GOARCH=${{ matrix.arch }} go build -o minewire-server-${{ matrix.arch }} -ldflags="-s -w" ./src/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: minewire-server-${{ matrix.arch }}
+          path: minewire-server-${{ matrix.arch }}
+
+  release:
+    name: Create Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+
+      - name: Package binaries
+        run: |
+          mkdir release
+          cp minewire-server-amd64/minewire-server-amd64 release/minewire-server-linux-amd64
+          cp minewire-server-arm64/minewire-server-arm64 release/minewire-server-linux-arm64
+          cd release
+          sha256sum * > checksums.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ github.ref_name }}
+          body: |
+            ## Changes
+
+            Auto-generated release for ${{ github.ref_name }}.
+
+            ### Download
+
+            - `minewire-server-linux-amd64` — x86_64
+            - `minewire-server-linux-arm64` — ARM64
+            - `checksums.txt` — SHA256
+
+            ### Setup
+
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/setup.sh | sudo bash
+            ```
+          files: release/*
+          draft: false
+          prerelease: false
