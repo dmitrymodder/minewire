@@ -35,7 +35,7 @@ jobs:
           path: minewire-server-${{ matrix.arch }}
 
   release:
-    name: Create Release
+    name: Create Release Assets
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
@@ -43,34 +43,25 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v8
 
-      - name: Package binaries
+      - name: Package binaries and create checksums
         run: |
-          mkdir release
+          mkdir -p release
           cp minewire-server-amd64/minewire-server-amd64 release/minewire-server-linux-amd64
           cp minewire-server-arm64/minewire-server-arm64 release/minewire-server-linux-arm64
+          
           cd release
           sha256sum * > checksums.txt
+          
+          echo "Generated files:"
+          ls -la
+          cat checksums.txt
 
-      - name: Create GitHub Release
+      - name: Upload Release Assets
         uses: softprops/action-gh-release@v2
         with:
-          name: Release ${{ github.ref_name }}
-          body: |
-            ## Changes
-
-            Auto-generated release for ${{ github.ref_name }}.
-
-            ### Download
-
-            - `minewire-server-linux-amd64` — x86_64
-            - `minewire-server-linux-arm64` — ARM64
-            - `checksums.txt` — SHA256
-
-            ### Setup
-
-            ```bash
-            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/setup.sh | sudo bash
-            ```
-          files: release/*
-          draft: false
+          files: |
+            release/minewire-server-linux-amd64
+            release/minewire-server-linux-arm64
+            release/checksums.txt
+          draft: true
           prerelease: false

@@ -54,7 +54,7 @@ const (
 
 var cfg Config
 
-const ServerVersion = "26.2.1"
+const ServerVersion = "26.7.1"
 
 func main() {
 	// Handle Version Flags

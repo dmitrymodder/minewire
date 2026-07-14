@@ -13,7 +13,7 @@ DATA_BACKUP="/tmp/minewire_config_backup"
 
 print_header() {
     echo "========================================="
-    echo "Minewire Server Setup (v25.12.4)"
+    echo "Minewire Server Setup"
     echo "========================================="
     echo ""
 }

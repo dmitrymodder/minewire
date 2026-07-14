@@ -129,6 +129,10 @@ motd: "§bMinewire Proxy Server\\n§eSecure Tunnel Active"
 max_players: 20
 online_min: 4
 online_max: 20
+
+mode: "fast"
+realistic_bandwidth_kb: 128
+realistic_burst_kb: 512
 ```
 
 ### Custom Icon (Optional)
@@ -201,6 +205,7 @@ sudo systemctl daemon-reload
 - `handler.go` - Protocol logic, encryption, tunneling
 - `protocol.go` - Minecraft protocol primitives (VarInt, String, etc.)
 - `motion.go` - Player movement simulation for realistic chunk coordinates
+- `throttle.go` - Slows down traffic for realistic mode
 - `server.yaml` - Server configuration
 - `minewire-server.service` - systemd service unit
 - `setup.sh` - Installation script
