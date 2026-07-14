@@ -10,6 +10,7 @@ BINARY_NAME="minewire-server"
 CONFIG_DIR="/etc/minewire"
 SERVICE_NAME="minewire-server"
 DATA_BACKUP="/tmp/minewire_config_backup"
+SRC_DIR="src"  # ← Новая переменная
 
 print_header() {
     echo "========================================="
@@ -19,7 +20,7 @@ print_header() {
 }
 
 check_root() {
-    if [ "$EUID" -ne 0 ]; then 
+    if [ "$EUID" -ne 0 ]; then
         echo "Error: This script must be run as root (use sudo)"
         exit 1
     fi
@@ -28,7 +29,7 @@ check_root() {
 detect_arch() {
     ARCH=$(uname -m)
     case "$ARCH" in
-        x86_64|amd64)  ARCH="amd64" ;;
+        x86_64|amd64) ARCH="amd64" ;;
         aarch64|arm64) ARCH="arm64" ;;
         *)
             echo "Error: Unsupported architecture: $ARCH"
@@ -41,63 +42,51 @@ detect_arch() {
 
 detect_installed_version() {
     if command -v $BINARY_NAME &> /dev/null; then
-        # Try to get version using --version flag (added in 25.12.4)
         if $BINARY_NAME --version &> /dev/null; then
              INSTALLED_VER=$($BINARY_NAME --version | head -n 1)
              echo "Detected installed version: $INSTALLED_VER"
         else
              echo "Detected installed version: Legacy (Pre-25.12.4)"
         fi
-        return 0 # Found
+        return 0
     fi
-    return 1 # Not found
+    return 1
 }
 
 download_binary() {
     echo "[Downloading latest Minewire server from GitHub Releases...]"
-    
-    # Detect architecture
+
     detect_arch
-    
-    # Get latest release download URL
+
     LATEST_URL="https://github.com/dmitrymodder/minewire/releases/latest/download/minewire-server-linux-${ARCH}"
     CHECKSUM_URL="https://github.com/dmitrymodder/minewire/releases/latest/download/checksums.txt"
-    
+
     echo "Downloading: $LATEST_URL"
-    
-    # Download binary
+
     if command -v curl &> /dev/null; then
         curl -fsSL -o "$BINARY_NAME" "$LATEST_URL" || {
-            echo "Error: Failed to download binary from GitHub Releases."
-            echo "Please check your internet connection or try again later."
+            echo "Error: Failed to download binary."
             exit 1
         }
-        
-        # Download checksums
-        curl -fsSL -o /tmp/minewire_checksums.txt "$CHECKSUM_URL" 2>/dev/null
+        curl -fsSL -o /tmp/minewire_checksums.txt "$CHECKSUM_URL" 2>/dev/null || true
     elif command -v wget &> /dev/null; then
         wget -q -O "$BINARY_NAME" "$LATEST_URL" || {
-            echo "Error: Failed to download binary from GitHub Releases."
-            echo "Please check your internet connection or try again later."
+            echo "Error: Failed to download binary."
             exit 1
         }
-        
-        # Download checksums
-        wget -q -O /tmp/minewire_checksums.txt "$CHECKSUM_URL" 2>/dev/null
+        wget -q -O /tmp/minewire_checksums.txt "$CHECKSUM_URL" 2>/dev/null || true
     else
-        echo "Error: Neither curl nor wget found. Please install one of them."
+        echo "Error: Neither curl nor wget found."
         exit 1
     fi
-    
-    # Verify checksum if checksums file was downloaded
+
+    # Checksum verification
     if [ -f /tmp/minewire_checksums.txt ]; then
         EXPECTED=$(grep "minewire-server-linux-${ARCH}" /tmp/minewire_checksums.txt | awk '{print $1}')
         if [ -n "$EXPECTED" ]; then
             ACTUAL=$(sha256sum "$BINARY_NAME" | awk '{print $1}')
             if [ "$EXPECTED" != "$ACTUAL" ]; then
                 echo "Error: Checksum verification failed!"
-                echo "Expected: $EXPECTED"
-                echo "Got:      $ACTUAL"
                 rm -f "$BINARY_NAME" /tmp/minewire_checksums.txt
                 exit 1
             fi
@@ -105,7 +94,7 @@ download_binary() {
         fi
         rm -f /tmp/minewire_checksums.txt
     fi
-    
+
     chmod +x "$BINARY_NAME"
     echo "✓ Binary downloaded successfully (${ARCH})"
     echo ""
@@ -114,11 +103,9 @@ download_binary() {
 backup_config() {
     if [ -f "$CONFIG_DIR/server.yaml" ]; then
         echo "[Backing up configuration...]"
-        mkdir -p $DATA_BACKUP
-        cp $CONFIG_DIR/server.yaml $DATA_BACKUP/server.yaml
-        if [ -f "$CONFIG_DIR/server-icon.png" ]; then
-            cp $CONFIG_DIR/server-icon.png $DATA_BACKUP/server-icon.png
-        fi
+        mkdir -p "$DATA_BACKUP"
+        cp "$CONFIG_DIR/server.yaml" "$DATA_BACKUP/server.yaml"
+        [ -f "$CONFIG_DIR/server-icon.png" ] && cp "$CONFIG_DIR/server-icon.png" "$DATA_BACKUP/server-icon.png"
         echo "✓ Backup saved to $DATA_BACKUP"
     fi
 }
@@ -126,11 +113,9 @@ backup_config() {
 restore_config() {
     if [ -f "$DATA_BACKUP/server.yaml" ]; then
         echo "[Restoring configuration...]"
-        mkdir -p $CONFIG_DIR
-        cp $DATA_BACKUP/server.yaml $CONFIG_DIR/server.yaml
-        if [ -f "$DATA_BACKUP/server-icon.png" ]; then
-             cp $DATA_BACKUP/server-icon.png $CONFIG_DIR/server-icon.png
-        fi
+        mkdir -p "$CONFIG_DIR"
+        cp "$DATA_BACKUP/server.yaml" "$CONFIG_DIR/server.yaml"
+        [ -f "$DATA_BACKUP/server-icon.png" ] && cp "$DATA_BACKUP/server-icon.png" "$CONFIG_DIR/server-icon.png"
         echo "✓ Configuration restored."
         return 0
     fi
@@ -138,47 +123,47 @@ restore_config() {
 }
 
 stop_server() {
-    if systemctl is-active --quiet $SERVICE_NAME; then
+    if systemctl is-active --quiet "$SERVICE_NAME"; then
         echo "Stopping running server..."
-        systemctl stop $SERVICE_NAME
+        systemctl stop "$SERVICE_NAME"
     fi
 }
 
 install_files() {
-    # Create user
+    # Create system user
     if ! id "minewire" &>/dev/null; then
         useradd --system --no-create-home --shell /bin/false minewire
     fi
 
     # Install binary
     echo "[Installing binary...]"
-    install -m 755 $BINARY_NAME $INSTALL_DIR/$BINARY_NAME
-    
-    # Config
-    mkdir -p $CONFIG_DIR
-    
-    # Try to restore first, otherwise copy default
+    install -m 755 "$BINARY_NAME" "$INSTALL_DIR/$BINARY_NAME"
+
+    # Config directory
+    mkdir -p "$CONFIG_DIR"
+
+    # Restore or copy defaults from src/
     if ! restore_config; then
         if [ ! -f "$CONFIG_DIR/server.yaml" ]; then
-             echo "Copying default configuration..."
-             cp server.yaml $CONFIG_DIR/server.yaml
+            echo "Copying default configuration..."
+            cp "$SRC_DIR/server.yaml" "$CONFIG_DIR/server.yaml"
         else
-             echo "Keeping existing configuration."
+            echo "Keeping existing configuration."
         fi
-        
-        if [ -f "server-icon.png" ] && [ ! -f "$CONFIG_DIR/server-icon.png" ]; then
-            cp server-icon.png $CONFIG_DIR/server-icon.png
+
+        if [ -f "$SRC_DIR/server-icon.png" ] && [ ! -f "$CONFIG_DIR/server-icon.png" ]; then
+            cp "$SRC_DIR/server-icon.png" "$CONFIG_DIR/server-icon.png"
         fi
     fi
 
     # Permissions
-    chown -R minewire:minewire $CONFIG_DIR
-    chmod 750 $CONFIG_DIR
-    chmod 640 $CONFIG_DIR/server.yaml
+    chown -R minewire:minewire "$CONFIG_DIR"
+    chmod 750 "$CONFIG_DIR"
+    chmod 640 "$CONFIG_DIR/server.yaml" 2>/dev/null || true
 
-    # Service
-    cp minewire-server.service /etc/systemd/system/$SERVICE_NAME.service
-    chmod 644 /etc/systemd/system/$SERVICE_NAME.service
+    # Systemd service
+    cp "$SRC_DIR/minewire-server.service" "/etc/systemd/system/$SERVICE_NAME.service"
+    chmod 644 "/etc/systemd/system/$SERVICE_NAME.service"
     systemctl daemon-reload
 }
 
@@ -187,13 +172,12 @@ main() {
     check_root
 
     MODE="INSTALL"
-
     if detect_installed_version; then
         echo ""
         echo "Existing installation found."
         echo "Do you want to [U]pdate (keep config) or [R]einstall (wipe config)?"
         read -p "(U/r): " CHOICE
-        case "$CHOICE" in 
+        case "$CHOICE" in
             r|R) MODE="REINSTALL" ;;
             *) MODE="UPDATE" ;;
         esac
@@ -204,46 +188,44 @@ main() {
     echo ""
 
     download_binary
-    
+
     if [ "$MODE" == "UPDATE" ]; then
         stop_server
         backup_config
     fi
-    
+
     if [ "$MODE" == "REINSTALL" ]; then
-         stop_server
-         # No backup, clean start
-         rm -rf $CONFIG_DIR
+        stop_server
+        rm -rf "$CONFIG_DIR"
     fi
 
     install_files
-    
-    # Cleanup build artifact
-    rm -f $BINARY_NAME
-    rm -rf $DATA_BACKUP
+
+    # Cleanup
+    rm -f "$BINARY_NAME"
+    rm -rf "$DATA_BACKUP"
 
     echo ""
     echo "========================================="
     echo "Setup Complete!"
     echo "========================================="
-    
+
     if [ "$MODE" == "UPDATE" ]; then
         echo "Attempting to restart service..."
-        systemctl start $SERVICE_NAME
-        
+        systemctl start "$SERVICE_NAME"
         sleep 2
-        if systemctl is-active --quiet $SERVICE_NAME; then
+        if systemctl is-active --quiet "$SERVICE_NAME"; then
             echo "✓ Service restarted successfully."
         else
             echo "❌ Service failed to start!"
             echo "--- Recent Logs ---"
-            journalctl -u $SERVICE_NAME -n 20 --no-pager
+            journalctl -u "$SERVICE_NAME" -n 30 --no-pager
             echo "-------------------"
-            echo "Please check /etc/minewire/server.yaml for syntax errors."
         fi
     else
         echo "Don't forget to configure: /etc/minewire/server.yaml"
-        echo "Then start: systemctl start $SERVICE_NAME"
+        echo "Then start with: systemctl start $SERVICE_NAME"
+        echo "Enable on boot:  systemctl enable $SERVICE_NAME"
     fi
 }
 
