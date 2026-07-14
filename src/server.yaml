@@ -69,7 +69,7 @@ mode: "fast"
 # Sustained bandwidth cap in realistic mode, in KB/s (kilobytes, NOT kilobits).
 # Only used when mode is "realistic". ~40 KB/s is in the ballpark of a real
 # client's steady chunk stream while walking around.
-realistic_bandwidth_kb: 40
+realistic_bandwidth_kb: 128
 
 # Burst allowance in realistic mode, in KB. Lets short bursts through (e.g.
 # the initial flood of chunks a client gets on join/teleport) before the
