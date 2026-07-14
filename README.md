@@ -11,6 +11,8 @@
 
 Proxy server that masquerades as a Minecraft server to establish encrypted tunnels and bypass network restrictions.
 
+### To connect to the server, use the [client](https://github.com/dmitrymodder/minewire-cli)
+
 ## Features
 
 - **AES-GCM Encryption** — All tunnel traffic encrypted with per-user key
