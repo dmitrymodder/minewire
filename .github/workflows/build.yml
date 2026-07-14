@@ -1,4 +1,4 @@
-name: Build Binaries
+name: Build
 
 on:
   push:
@@ -9,39 +9,45 @@ on:
 
 jobs:
   build:
-    name: Build for Linux
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        arch: [amd64, arm64]
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v6
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          go-version: '1.26'
+          go-version: "1.26"
 
-      - name: Build binary
-        run: |
-          GOOS=linux GOARCH=${{ matrix.arch }} go build -o minewire-server-${{ matrix.arch }} -ldflags="-s -w" ./src/
-
-      - name: Create checksums
+      - name: Build binaries
         run: |
           mkdir -p artifacts
-          cp minewire-server-amd64 artifacts/minewire-server-linux-amd64 2>/dev/null || true
-          cp minewire-server-arm64 artifacts/minewire-server-linux-arm64 2>/dev/null || true
+
+          GOOS=linux GOARCH=amd64 \
+            go build -ldflags="-s -w" \
+            -o artifacts/minewire-server-linux-amd64 \
+            ./src
+
+          GOOS=linux GOARCH=arm64 \
+            go build -ldflags="-s -w" \
+            -o artifacts/minewire-server-linux-arm64 \
+            ./src
+
+      - name: Generate checksums
+        run: |
           cd artifacts
-          sha256sum * > checksums.txt
-          echo "=== Files ready ==="
-          ls -la
+          sha256sum minewire-server-linux-amd64 \
+                    minewire-server-linux-arm64 \
+            > checksums.txt
+
+          echo "Artifacts:"
+          ls -lh
+          echo
           cat checksums.txt
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
-          name: minewire-binaries
-          path: artifacts/
-          retention-days: 30
+          name: minewire
+          path: artifacts/*
