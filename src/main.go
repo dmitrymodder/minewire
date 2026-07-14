@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -45,6 +46,15 @@ type Config struct {
 	// (e.g. the initial flood of chunks a client gets on join/teleport)
 	// before throttling kicks in for sustained transfer.
 	RealisticBurstKB int `yaml:"realistic_burst_kb"`
+
+	// Optional upstream SOCKS5 proxy for outbound (target-side) connections,
+	// e.g. "127.0.0.1:4000" for a local Cloudflare WARP socks proxy. When
+	// empty, target connections are dialed directly (previous behavior).
+	UpstreamSocks5 string `yaml:"upstream_socks5"`
+	// Optional username/password auth for the upstream SOCKS5 proxy.
+	// Leave both empty if the proxy requires no authentication (e.g. WARP).
+	UpstreamSocks5User string `yaml:"upstream_socks5_user"`
+	UpstreamSocks5Pass string `yaml:"upstream_socks5_pass"`
 }
 
 const (
@@ -99,6 +109,17 @@ func main() {
 		cfg.RealisticBurstKB = 512 // room for the initial join/teleport chunk burst
 	}
 	log.Printf("Tunnel mode: %s", cfg.Mode)
+
+	if cfg.UpstreamSocks5 != "" {
+		// Fail fast if the upstream proxy is misconfigured/unreachable rather
+		// than silently falling back to direct dials per-stream later.
+		testConn, err := dialUpstream(net.JoinHostPort("1.1.1.1", "443"), 5*time.Second)
+		if err != nil {
+			log.Fatalf("Upstream SOCKS5 proxy %s not usable: %v", cfg.UpstreamSocks5, err)
+		}
+		testConn.Close()
+		log.Printf("Outbound target connections will be routed via upstream SOCKS5 proxy: %s", cfg.UpstreamSocks5)
+	}
 
 	// Initialize authentication map (convert passwords to expected usernames)
 	initAuthMap()

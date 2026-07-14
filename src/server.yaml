@@ -75,3 +75,17 @@ realistic_bandwidth_kb: 128
 # the initial flood of chunks a client gets on join/teleport) before the
 # sustained cap above kicks back in. Only used when mode is "realistic".
 realistic_burst_kb: 512
+
+# Optional: route all outbound (target-side) tunnel connections through an
+# upstream SOCKS5 proxy instead of dialing the internet directly.
+# Useful for e.g. a local Cloudflare WARP socks proxy (warp-cli sets up
+# 127.0.0.1:4000 by default) to get clean/rotated GeoIP for exit traffic.
+# Leave commented out / empty to dial directly (previous/default behavior).
+
+#upstream_socks5: "127.0.0.1:4000"
+
+# Only needed if the upstream SOCKS5 proxy requires authentication.
+# Leave both empty/commented for proxies like WARP that don't need auth.
+
+#upstream_socks5_user: ""
+#upstream_socks5_pass: ""

@@ -360,8 +360,9 @@ func handleStream(stream net.Conn) {
 		return
 	}
 
-	target, err := net.DialTimeout("tcp", dest, 10*time.Second)
+	target, err := dialUpstream(dest, 10*time.Second)
 	if err != nil {
+		log.Printf("Failed to dial target %s: %v", dest, err)
 		return
 	}
 	defer target.Close()
