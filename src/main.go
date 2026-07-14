@@ -34,7 +34,23 @@ type Config struct {
 	MaxPlayers int `yaml:"max_players"`
 	OnlineMin  int `yaml:"online_min"`
 	OnlineMax  int `yaml:"online_max"`
+
+	// Tunnel behavior mode: "fast" (default, unrestricted throughput) or
+	// "realistic" (throttled + paced to resemble genuine Minecraft traffic).
+	Mode string `yaml:"mode"`
+
+	// Sustained throughput cap in realistic mode, in KB/s (kilobytes, not kilobits).
+	RealisticBandwidthKB int `yaml:"realistic_bandwidth_kb"`
+	// Burst allowance in realistic mode, in KB - lets short bursts through
+	// (e.g. the initial flood of chunks a client gets on join/teleport)
+	// before throttling kicks in for sustained transfer.
+	RealisticBurstKB int `yaml:"realistic_burst_kb"`
 }
+
+const (
+	ModeFast      = "fast"
+	ModeRealistic = "realistic"
+)
 
 var cfg Config
 
@@ -67,6 +83,22 @@ func main() {
 	if cfg.MaxPlayers == 0 {
 		cfg.MaxPlayers = 20
 	}
+	switch cfg.Mode {
+	case ModeFast, ModeRealistic:
+		// valid, keep as-is
+	case "":
+		cfg.Mode = ModeFast
+	default:
+		log.Printf("Unknown mode %q in config, falling back to %q", cfg.Mode, ModeFast)
+		cfg.Mode = ModeFast
+	}
+	if cfg.RealisticBandwidthKB <= 0 {
+		cfg.RealisticBandwidthKB = 40 // ~a real client's steady-state chunk stream
+	}
+	if cfg.RealisticBurstKB <= 0 {
+		cfg.RealisticBurstKB = 512 // room for the initial join/teleport chunk burst
+	}
+	log.Printf("Tunnel mode: %s", cfg.Mode)
 
 	// Initialize authentication map (convert passwords to expected usernames)
 	initAuthMap()

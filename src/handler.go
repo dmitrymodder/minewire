@@ -108,10 +108,26 @@ func startPlayerCountSimulator() {
 	}
 }
 
+// getSecureRandomInt returns a cryptographically random int in [0, max).
+// Uses 4 bytes (not 1) so it works correctly for max > 256 - the previous
+// version silently capped every result to the 0-255 range, meaning e.g.
+// NewMotionGenerator()'s starting X/Z (max = fieldSize = 2000) always landed
+// in one corner of the field instead of spreading across it. Rejection
+// sampling avoids modulo bias for the remaining cases too.
 func getSecureRandomInt(max int) int {
-	b := make([]byte, 1)
-	rand.Read(b)
-	return int(b[0]) % max
+	if max <= 0 {
+		return 0
+	}
+	maxUint32 := uint32(1<<32 - 1)
+	limit := maxUint32 - (maxUint32 % uint32(max))
+	b := make([]byte, 4)
+	for {
+		rand.Read(b)
+		v := binary.BigEndian.Uint32(b)
+		if v < limit {
+			return int(v % uint32(max))
+		}
+	}
 }
 
 func processPacket(conn net.Conn, reader io.Reader, pBuf *bytes.Buffer, state *int) {
@@ -231,6 +247,7 @@ func startMuxTunnel(conn net.Conn, leftoverReader io.Reader, password string, mo
 		rawReader: leftoverReader,
 		motion:    motion,
 		buf:       new(bytes.Buffer),
+		bucket:    newThrottleBucket(),
 	}
 
 	go func() {
@@ -272,29 +289,41 @@ func startMuxTunnel(conn net.Conn, leftoverReader io.Reader, password string, mo
 		}
 	}()
 
+	// Closed once the yamux session ends, so the ticker goroutine below stops
+	// instead of leaking forever (previously it ran until process exit even
+	// after the underlying connection was long gone).
+	stopCh := make(chan struct{})
+
 	go func() {
-		ticker := time.NewTicker(10 * time.Second)
-		timeTicker := time.NewTicker(20 * time.Second) // Minecraft time flows...
-		defer ticker.Stop()
+		keepAliveTicker := time.NewTicker(15 * time.Second) // vanilla sends ~every 15s
+		timeTicker := time.NewTicker(1 * time.Second)       // vanilla syncs time roughly every tick-second, not every 20s
+		motionTicker := time.NewTicker(2 * time.Second)      // move the simulated player independently of time updates
+		defer keepAliveTicker.Stop()
 		defer timeTicker.Stop()
+		defer motionTicker.Stop()
 
 		worldTime := int64(0)
 
 		for {
 			select {
-			case <-ticker.C:
+			case <-stopCh:
+				return
+			case <-keepAliveTicker.C:
 				buf := new(bytes.Buffer)
 				WriteLong(buf, time.Now().UnixNano())
 				WritePacket(conn, PID_CB_KeepAlive, buf.Bytes())
 			case <-timeTicker.C:
-				// Send Time Update to encourage client simulation
-				worldTime += 20 * 20 // Advance 20 seconds (20 ticks/sec)
+				worldTime += 20 // advance 1 second (20 ticks/sec)
 				buf := new(bytes.Buffer)
 				WriteLong(buf, worldTime)        // World Age
 				WriteLong(buf, -worldTime%24000) // Time of day (negative to stop internal cycle if client respected it, but here just updating)
 				WritePacket(conn, PID_CB_TimeUpdate, buf.Bytes())
-
-				// Update motion simulation rarely to be efficient
+			case <-motionTicker.C:
+				// Previously this only happened alongside the (rare) time update,
+				// meaning many consecutive Chunk Data packets carried the exact
+				// same X/Z coordinates - not something a moving player would do.
+				// Updating it on its own faster cadence keeps chunk coordinates
+				// drifting continuously regardless of how chatty the tunnel is.
 				mc.motion.Update()
 			}
 		}
@@ -308,12 +337,14 @@ func startMuxTunnel(conn net.Conn, leftoverReader io.Reader, password string, mo
 
 	session, err := yamux.Server(mc, ymConfig)
 	if err != nil {
+		close(stopCh)
 		return
 	}
 
 	for {
 		stream, err := session.Accept()
 		if err != nil {
+			close(stopCh) // session is done - let the ticker goroutine exit
 			return
 		}
 		go handleStream(stream)
@@ -354,6 +385,7 @@ type MinecraftConn struct {
 	buf        *bytes.Buffer
 	bufLock    sync.Mutex
 	flushTimer *time.Timer
+	bucket     *tokenBucket // nil in fast mode; set in realistic mode
 }
 
 func (mc *MinecraftConn) Read(b []byte) (int, error) { return mc.r.Read(b) }
@@ -400,6 +432,11 @@ func (mc *MinecraftConn) flush() (int, error) {
 	nonce := make([]byte, mc.aead.NonceSize())
 	rand.Read(nonce)
 	encrypted := mc.aead.Seal(nonce, nonce, data, nil)
+
+	// In realistic mode, pace this packet to match the configured bandwidth
+	// cap. This blocks the caller (acceptable: yamux already serializes
+	// writes to the underlying conn, so this just provides backpressure).
+	mc.bucket.WaitN(len(encrypted))
 
 	buf := new(bytes.Buffer)
 

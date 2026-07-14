@@ -1,22 +1,26 @@
 # Minewire Server
 
 > [!WARNING]
-> ### Not hardened against traffic-analysis / behavioral DPI — read before use
+> ### Not hardened against traffic-analysis / behavioral DPI
 >
-> - This project was built as a **"what if?" hobby experiment**, not against a rigorous threat model. It has **not** been tested or designed to resist **traffic-volume or behavioral analysis** (e.g. GFW-style DPI that inspects statistical traffic patterns rather than packet signatures).
-> - It was developed and validated against a **signature-based DPI** environment (specifically, Russian DPI/ТСПУ), which inspects content/signatures more than aggregate traffic volume. Results in other censorship environments may differ significantly.
-> - Throughput is **intentionally higher than a real Minecraft client's**, in order to make the tunnel practically usable. This makes the disguise **statistically distinguishable** from genuine Minecraft traffic under sustained volume-based observation.
-> - **Do not rely on this as your only or primary circumvention layer** in a high-risk environment. Use at your own risk, and understand the threat model above before deploying it anywhere your safety depends on it.
+> This is a **hobby experiment**, not a censorship-resistant transport. It was developed and tested primarily against **signature-based DPI**, **not** behavioral or traffic-analysis systems (e.g. GFW-style statistical detection).
+>
+> While the `realistic` mode reduces traffic anomalies, **no resistance against volume- or behavior-based analysis is claimed**. Do **not** rely on this as your only circumvention layer in high-risk environments.
+>
+> Also, this project is presented for educational purposes only. The author does not encourage violating the laws of your country and/or using this tool to access prohibited resources.
 
 Proxy server that masquerades as a Minecraft server to establish encrypted tunnels and bypass network restrictions.
 
 ## Features
 
-- **AES-GCM Encryption** - All traffic encrypted using client password
-- **Minecraft Camouflage** - Appears as legitimate Minecraft server when scanned
-- **Stream Multiplexing** - Multiple connections through single tunnel (yamux)
-- **Player Simulation** - Realistic online player count fluctuation
-- **Password Authentication** - Multi-user support with individual passwords
+- **AES-GCM Encryption** — All tunnel traffic encrypted with per-user key
+- **Minecraft Camouflage** — Fully mimics Minecraft Java server
+- **Two Tunnel Modes**:
+  - `fast` — maximum speed (default)
+  - `realistic` — throttled + paced to look like real player traffic
+- **Stream Multiplexing** — yamux (multiple connections over one tunnel)
+- **Realistic Player Simulation** — moving player + terrain + fluctuating online count
+- **Multi-user Auth** — passwords + optional nicknames + subscription links
 
 ## How It Works
 
@@ -214,6 +218,13 @@ sudo systemctl daemon-reload
 - Empty block entities and light mask arrays
 
 **Motion Simulation**: Random walk algorithm with terrain-following Y-coordinate adjustment. Updates periodically to generate varied chunk coordinates, enhancing camouflage.
+
+## Tunnel Modes
+
+| Mode       | Speed          | Stealth Level                  | Use Case                          |
+|------------|----------------|--------------------------------|-----------------------------------|
+| `fast`     | Maximum      | Signature and patterns         | Low-risk, maximum performance     |
+| `realistic`| Moderate (~120 KB/s by default) | All + traffic volume  | Higher-risk environments          |
 
 ## License
 

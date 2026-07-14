@@ -55,3 +55,23 @@ online_min: 4
 # Maximum simulated online players
 # The server will show a random count between online_min and online_max
 online_max: 20
+
+# Tunnel throughput mode
+# - "fast": no throughput limits (previous/default behavior). Best raw speed,
+#   but sustained multi-megabyte transfers are statistically distinguishable
+#   from what a real Minecraft client would ever generate.
+# - "realistic": throttles + paces traffic to resemble genuine Minecraft
+#   chunk-loading behavior. Slower, but much less anomalous under
+#   volume/behavioral traffic analysis. Use this if you've been flagged or
+#   are in a higher-risk environment.
+mode: "fast"
+
+# Sustained bandwidth cap in realistic mode, in KB/s (kilobytes, NOT kilobits).
+# Only used when mode is "realistic". ~40 KB/s is in the ballpark of a real
+# client's steady chunk stream while walking around.
+realistic_bandwidth_kb: 40
+
+# Burst allowance in realistic mode, in KB. Lets short bursts through (e.g.
+# the initial flood of chunks a client gets on join/teleport) before the
+# sustained cap above kicks back in. Only used when mode is "realistic".
+realistic_burst_kb: 512
