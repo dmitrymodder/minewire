@@ -42,10 +42,16 @@ const (
 
 // Global state for player count simulation and authentication
 var (
-	currentOnline int
-	onlineLock    sync.Mutex
-	validUsers    = make(map[string]string) // Map: GeneratedUsername -> OriginalPassword
-	nicknameMap   = make(map[string]string) // Map: Nickname -> OriginalPassword
+	currentOnline      int
+	onlineLock         sync.Mutex
+	validUsers         = make(map[string]string) // Map: GeneratedUsername -> OriginalPassword
+	nicknameMap        = make(map[string]string) // Map: Nickname -> OriginalPassword
+	staticHeightmapNBT = buildStaticHeightmapNBT()
+	bufPool            = sync.Pool{
+		New: func() interface{} {
+			return new(bytes.Buffer)
+		},
+	}
 )
 
 // initAuthMap initializes the authentication map by generating expected usernames
@@ -297,7 +303,7 @@ func startMuxTunnel(conn net.Conn, leftoverReader io.Reader, password string, mo
 	go func() {
 		keepAliveTicker := time.NewTicker(15 * time.Second) // vanilla sends ~every 15s
 		timeTicker := time.NewTicker(1 * time.Second)       // vanilla syncs time roughly every tick-second, not every 20s
-		motionTicker := time.NewTicker(2 * time.Second)      // move the simulated player independently of time updates
+		motionTicker := time.NewTicker(2 * time.Second)     // move the simulated player independently of time updates
 		defer keepAliveTicker.Stop()
 		defer timeTicker.Stop()
 		defer motionTicker.Stop()
@@ -416,6 +422,28 @@ func (mc *MinecraftConn) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
+func buildStaticHeightmapNBT() []byte {
+	buf := new(bytes.Buffer)
+
+	// TAG_Compound (Start)
+	buf.WriteByte(0x0A)
+	buf.Write([]byte{0x00, 0x00}) // Empty name
+
+	// TAG_Long_Array "MOTION_BLOCKING"
+	buf.WriteByte(0x0C)
+	WriteStringNBT(buf, "MOTION_BLOCKING")
+	WriteInt(buf, 37)
+
+	heights := createPackedHeights(64) // считаем один раз, навсегда
+	for _, h := range heights {
+		WriteLong(buf, h)
+	}
+
+	buf.WriteByte(0x00) // TAG_End
+
+	return buf.Bytes()
+}
+
 // flush wraps the buffered data in a Minecraft packet and sends it.
 // Caller must hold bufLock.
 func (mc *MinecraftConn) flush() (int, error) {
@@ -439,35 +467,18 @@ func (mc *MinecraftConn) flush() (int, error) {
 	// writes to the underlying conn, so this just provides backpressure).
 	mc.bucket.WaitN(len(encrypted))
 
-	buf := new(bytes.Buffer)
+	buf := bufPool.Get().(*bytes.Buffer)
+	buf.Reset()
 
 	// Use simulated coordinates for Chunk X/Z based on current player position
-	// This makes the "chunks" appear around the player
 	chunkX := int(mc.motion.X) >> 4
 	chunkZ := int(mc.motion.Z) >> 4
 
 	WriteInt(buf, int32(chunkX)) // Chunk X
 	WriteInt(buf, int32(chunkZ)) // Chunk Z
 
-	// Add realistic NBT heightmap data to disguise the packet
-	// TAG_Compound (Start)
-	buf.WriteByte(0x0A)
-	buf.Write([]byte{0x00, 0x00}) // Empty name
-
-	// TAG_Long_Array "MOTION_BLOCKING"
-	buf.WriteByte(0x0C) // Type: Long Array
-	WriteStringNBT(buf, "MOTION_BLOCKING")
-	WriteInt(buf, 37) // Array length: 37 longs
-
-	// Write 37 longs containing packed height data
-	// Using constant height of 64 for simplicity
-	heights := createPackedHeights(64)
-	for _, h := range heights {
-		WriteLong(buf, h)
-	}
-
-	// TAG_End
-	buf.WriteByte(0x00)
+	// Precomputed heightmap NBT — no recomputation per packet
+	buf.Write(staticHeightmapNBT)
 
 	// Add encrypted payload
 	WriteVarInt(buf, len(encrypted))
@@ -475,7 +486,6 @@ func (mc *MinecraftConn) flush() (int, error) {
 
 	// Add empty post-data fields (block entities, light masks)
 	WriteVarInt(buf, 0) // Block entities count
-	// Light masks (all empty)
 	WriteVarInt(buf, 0)
 	WriteVarInt(buf, 0)
 	WriteVarInt(buf, 0)
@@ -484,6 +494,8 @@ func (mc *MinecraftConn) flush() (int, error) {
 	WriteVarInt(buf, 0)
 
 	err := WritePacket(mc.conn, PID_CB_ChunkData, buf.Bytes())
+
+	bufPool.Put(buf)
 
 	n := mc.buf.Len()
 	mc.buf.Reset()

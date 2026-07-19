@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -61,6 +62,12 @@ const (
 	ModeFast      = "fast"
 	ModeRealistic = "realistic"
 )
+
+var bufferPool = sync.Pool{
+	New: func() interface{} {
+		return make([]byte, 0, 32*1024)
+	},
+}
 
 var cfg Config
 
@@ -170,15 +177,24 @@ func handleConnection(conn net.Conn) {
 			return
 		}
 
-		packetData := make([]byte, length)
-		_, err = io.ReadFull(reader, packetData)
+		buf := bufferPool.Get().([]byte)
+		if cap(buf) < length {
+			buf = make([]byte, length)
+		} else {
+			buf = buf[:length]
+		}
+
+		_, err = io.ReadFull(reader, buf)
 		if err != nil {
+			bufferPool.Put(buf[:0])
 			conn.Close()
 			return
 		}
 
-		pBuf := bytes.NewBuffer(packetData)
+		pBuf := bytes.NewBuffer(buf)
 		processPacket(conn, reader, pBuf, &state)
+
+		bufferPool.Put(buf[:0])
 	}
 }
 
