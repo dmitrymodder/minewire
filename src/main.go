@@ -71,7 +71,7 @@ var bufferPool = sync.Pool{
 
 var cfg Config
 
-const ServerVersion = "26.7.1"
+const ServerVersion = "26.7.3"
 
 func main() {
 	// Handle Version Flags
